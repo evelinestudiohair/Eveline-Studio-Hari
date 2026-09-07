@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useSalon } from '../../context/SalonContext';
 import {
   Settings,
@@ -17,12 +17,21 @@ import {
   User,
   Eye,
   EyeOff,
+  Camera,
+  Upload,
+  Image as ImageIcon,
+  Sparkles,
+  Check,
+  Trash2,
+  RefreshCw,
+  Scissors,
 } from 'lucide-react';
 import {
   createWhatsAppLink,
   normalizeWhatsAppNumber,
   formatPhoneBR,
 } from '../../utils/dateTime';
+import { INITIAL_SETTINGS } from '../../data/initialData';
 
 export const AdminSettings: React.FC = () => {
   const {
@@ -41,6 +50,21 @@ export const AdminSettings: React.FC = () => {
   const [cancellationPolicy, setCancellationPolicy] = useState(settings.cancellationPolicyNotice || '');
   const [feedback, setFeedback] = useState<string | null>(null);
 
+  // Visual Identity: Logo & Cover
+  const [logoUrl, setLogoUrl] = useState(settings.logoUrl || '');
+  const [ownerCoverUrl, setOwnerCoverUrl] = useState(settings.ownerCoverUrl || '');
+  const [ownerRole, setOwnerRole] = useState(settings.ownerRole || 'Master Hair Stylist & Visagista');
+  const [ownerBio, setOwnerBio] = useState(
+    settings.ownerBio ||
+      'Especialista em mechas personalizadas, visagismo e saúde capilar de alto padrão. Atendimento exclusivo e hora marcada.'
+  );
+  const [isLogoUrlInputVisible, setIsLogoUrlInputVisible] = useState(false);
+  const [isCoverUrlInputVisible, setIsCoverUrlInputVisible] = useState(false);
+  const [mediaFeedback, setMediaFeedback] = useState<string | null>(null);
+
+  const logoFileInputRef = useRef<HTMLInputElement>(null);
+  const coverFileInputRef = useRef<HTMLInputElement>(null);
+
   // Admin Auth Settings
   const [adminEmail, setAdminEmail] = useState(
     adminCredentials.email || settings.ownerEmail || 'eveline.studiohair@gmail.com'
@@ -52,6 +76,62 @@ export const AdminSettings: React.FC = () => {
     type: 'success' | 'error';
     message: string;
   } | null>(null);
+
+  const handleLogoFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      setMediaFeedback('Por favor, selecione um arquivo de imagem válido (PNG, JPG, WEBP).');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const result = event.target?.result as string;
+      if (result) {
+        setLogoUrl(result);
+        updateSettings({ logoUrl: result });
+        setMediaFeedback('Logo atualizada com sucesso!');
+        setTimeout(() => setMediaFeedback(null), 3500);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleCoverFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      setMediaFeedback('Por favor, selecione um arquivo de imagem válido.');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const result = event.target?.result as string;
+      if (result) {
+        setOwnerCoverUrl(result);
+        updateSettings({ ownerCoverUrl: result });
+        setMediaFeedback('Foto de capa da dona atualizada com sucesso!');
+        setTimeout(() => setMediaFeedback(null), 3500);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSaveMedia = (e: React.FormEvent) => {
+    e.preventDefault();
+    updateSettings({
+      logoUrl,
+      ownerCoverUrl,
+      ownerRole,
+      ownerBio,
+    });
+    setMediaFeedback('Identidade visual salva e sincronizada em todo o sistema!');
+    setTimeout(() => setMediaFeedback(null), 3500);
+  };
 
   const handleSaveAuth = (e: React.FormEvent) => {
     e.preventDefault();
@@ -106,6 +186,10 @@ export const AdminSettings: React.FC = () => {
       whatsapp: cleanWa,
       address,
       cancellationPolicyNotice: cancellationPolicy,
+      logoUrl,
+      ownerCoverUrl,
+      ownerRole,
+      ownerBio,
     });
     setWhatsapp(cleanWa);
     setFeedback('Dados do salão atualizados com sucesso!');
@@ -119,6 +203,16 @@ export const AdminSettings: React.FC = () => {
       )
     ) {
       resetToSampleData();
+      setName(INITIAL_SETTINGS.name);
+      setOwnerName(INITIAL_SETTINGS.ownerName);
+      setPhone(INITIAL_SETTINGS.phone);
+      setWhatsapp(INITIAL_SETTINGS.whatsapp);
+      setAddress(INITIAL_SETTINGS.address);
+      setCancellationPolicy(INITIAL_SETTINGS.cancellationPolicyNotice);
+      setLogoUrl(INITIAL_SETTINGS.logoUrl || '');
+      setOwnerCoverUrl(INITIAL_SETTINGS.ownerCoverUrl || '');
+      setOwnerRole(INITIAL_SETTINGS.ownerRole || '');
+      setOwnerBio(INITIAL_SETTINGS.ownerBio || '');
       setFeedback('Dados de demonstração restaurados!');
       setTimeout(() => setFeedback(null), 3000);
     }
@@ -129,10 +223,10 @@ export const AdminSettings: React.FC = () => {
       {/* Header */}
       <div className="bg-[#16161B] rounded-3xl p-5 sm:p-6 border border-[#262630] shadow-2xs">
         <h2 className="text-xl sm:text-2xl font-serif font-bold text-[#E6CA85]">
-          Configurações do Salão & WhatsApp
+          Configurações do Salão & Identidade Visual
         </h2>
         <p className="text-xs sm:text-sm text-[#9E988F] mt-1">
-          Dados do estabelecimento, número de contato e modelos de mensagens automáticas para as clientes.
+          Gerencie a identidade visual (logo estilo Instagram, foto de capa com a dona), dados cadastrais e mensagens automáticas.
         </p>
 
         {feedback && (
@@ -141,6 +235,306 @@ export const AdminSettings: React.FC = () => {
             <span>{feedback}</span>
           </div>
         )}
+      </div>
+
+      {/* ============================================================ */}
+      {/* IDENTIDADE VISUAL & MÍDIA DO SALÃO (LOGO & CAPA DA DONA)     */}
+      {/* ============================================================ */}
+      <div className="bg-[#16161B] rounded-3xl p-5 sm:p-6 border border-[#262630] shadow-2xs space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-[#262630]">
+          <div>
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-5 h-5 text-[#C5A059]" />
+              <h3 className="text-lg font-serif font-bold text-[#E6CA85]">
+                Identidade Visual do Studio & Mídia
+              </h3>
+            </div>
+            <p className="text-xs text-[#9E988F] mt-0.5">
+              Personalize a logo (como alterar uma foto de perfil do Instagram) e a foto de capa oficial da dona para elevar o profissionalismo percebido pelos clientes.
+            </p>
+          </div>
+
+          {mediaFeedback && (
+            <div className="p-2.5 rounded-xl bg-emerald-950/50 border border-emerald-900/60 text-emerald-300 text-xs font-semibold flex items-center gap-2 animate-in fade-in">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>{mediaFeedback}</span>
+            </div>
+          )}
+        </div>
+
+        {/* Hidden inputs for direct file picker */}
+        <input
+          id="file-upload-logo"
+          type="file"
+          ref={logoFileInputRef}
+          accept="image/*"
+          className="hidden"
+          onChange={handleLogoFileUpload}
+        />
+        <input
+          id="file-upload-cover"
+          type="file"
+          ref={coverFileInputRef}
+          accept="image/*"
+          className="hidden"
+          onChange={handleCoverFileUpload}
+        />
+
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          {/* Card 1: Logo / Instagram-Style Profile (4 cols on lg) */}
+          <div className="lg:col-span-4 bg-[#121216] rounded-2xl p-5 border border-[#2A2A38] flex flex-col items-center text-center">
+            <div className="w-full flex items-center justify-between mb-4">
+              <span className="text-xs font-bold uppercase tracking-wider text-[#C5A059]">
+                Logo do Salão
+              </span>
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#1F1F28] border border-[#333342] text-[#9E988F]">
+                Estilo Instagram
+              </span>
+            </div>
+
+            {/* Circular Instagram-like profile container */}
+            <div
+              id="admin-logo-preview-avatar"
+              onClick={() => logoFileInputRef.current?.click()}
+              className="relative group cursor-pointer my-2"
+              title="Clique para alterar a logo / foto de perfil"
+            >
+              <div className="w-28 h-28 sm:w-32 sm:h-32 rounded-full p-1 bg-gradient-to-tr from-[#C5A059] via-[#E6CA85] to-[#8C6D34] shadow-xl">
+                <div className="w-full h-full rounded-full bg-[#16161B] overflow-hidden flex items-center justify-center border-2 border-[#121216] relative">
+                  {logoUrl ? (
+                    <img
+                      src={logoUrl}
+                      alt="Logo do Studio"
+                      referrerPolicy="no-referrer"
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    />
+                  ) : (
+                    <Scissors className="w-10 h-10 text-[#E6CA85]" />
+                  )}
+
+                  {/* Dark overlay on hover */}
+                  <div className="absolute inset-0 bg-black/60 backdrop-blur-xs flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-white text-[11px] font-semibold gap-1 p-2">
+                    <Camera className="w-5 h-5 text-[#E6CA85]" />
+                    <span>Trocar Foto</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Camera icon badge */}
+              <div className="absolute bottom-1 right-1 w-8 h-8 rounded-full bg-[#C5A059] text-[#0D0D10] border-2 border-[#121216] flex items-center justify-center shadow-md group-hover:bg-[#E6CA85] transition-colors">
+                <Camera className="w-4 h-4" />
+              </div>
+            </div>
+
+            <p className="text-xs text-[#9E988F] mt-3">
+              Clique no círculo acima para carregar uma imagem do seu dispositivo.
+            </p>
+
+            <div className="w-full mt-4 flex flex-col gap-2">
+              <button
+                id="btn-upload-logo-file"
+                type="button"
+                onClick={() => logoFileInputRef.current?.click()}
+                className="w-full py-2.5 px-3 rounded-xl bg-[#22222D] hover:bg-[#2A2A38] border border-[#333342] text-[#E6CA85] text-xs font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer"
+              >
+                <Upload className="w-3.5 h-3.5" />
+                <span>Escolher Imagem do Aparelho</span>
+              </button>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsLogoUrlInputVisible(!isLogoUrlInputVisible)}
+                  className="flex-1 py-1.5 px-2.5 rounded-xl border border-[#2A2A38] hover:border-[#3A3A4A] text-[11px] text-[#9E988F] hover:text-[#D8D4CE] transition-colors cursor-pointer"
+                >
+                  {isLogoUrlInputVisible ? 'Ocultar URL' : 'Inserir Link URL'}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const defaultLogo = INITIAL_SETTINGS.logoUrl || '';
+                    setLogoUrl(defaultLogo);
+                    updateSettings({ logoUrl: defaultLogo });
+                    setMediaFeedback('Logo padrão restaurada!');
+                    setTimeout(() => setMediaFeedback(null), 3000);
+                  }}
+                  className="py-1.5 px-2.5 rounded-xl border border-[#2A2A38] hover:border-[#3A3A4A] text-[11px] text-[#9E988F] hover:text-[#D8D4CE] transition-colors cursor-pointer"
+                  title="Restaurar logo padrão dourada"
+                >
+                  <RefreshCw className="w-3 h-3" />
+                </button>
+              </div>
+
+              {isLogoUrlInputVisible && (
+                <div className="mt-1">
+                  <input
+                    id="input-logo-url"
+                    type="url"
+                    placeholder="https://...link-da-imagem.png"
+                    value={logoUrl}
+                    onChange={(e) => {
+                      setLogoUrl(e.target.value);
+                      updateSettings({ logoUrl: e.target.value });
+                    }}
+                    className="w-full px-3 py-2 rounded-xl border border-[#2A2A38] bg-[#16161B] text-[#F5F3EF] text-xs focus:ring-1 focus:ring-[#C5A059] focus:outline-hidden"
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Card 2: Cover Photo & Studio Owner Presentation (8 cols on lg) */}
+          <div className="lg:col-span-8 bg-[#121216] rounded-2xl p-5 border border-[#2A2A38] flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <span className="text-xs font-bold uppercase tracking-wider text-[#C5A059]">
+                  Capa do Studio & Foto Profissional da Dona
+                </span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#1F1F28] border border-[#333342] text-[#9E988F]">
+                  Destaque na Área do Cliente
+                </span>
+              </div>
+
+              {/* 16:9 Cover preview */}
+              <div
+                id="admin-cover-preview-banner"
+                onClick={() => coverFileInputRef.current?.click()}
+                className="relative aspect-21/9 sm:aspect-16/7 w-full rounded-2xl overflow-hidden border border-[#2A2A38] group cursor-pointer bg-[#16161B] shadow-lg"
+                title="Clique para alterar a foto de capa"
+              >
+                {ownerCoverUrl ? (
+                  <img
+                    src={ownerCoverUrl}
+                    alt="Foto de Capa do Studio"
+                    referrerPolicy="no-referrer"
+                    className="w-full h-full object-cover object-center group-hover:scale-103 transition-transform duration-500"
+                  />
+                ) : (
+                  <div className="w-full h-full flex flex-col items-center justify-center text-[#9E988F]">
+                    <ImageIcon className="w-8 h-8 text-[#C5A059]/40 mb-1" />
+                    <span className="text-xs">Nenhuma foto de capa definida</span>
+                  </div>
+                )}
+
+                {/* Overlays */}
+                <div className="absolute inset-0 bg-gradient-to-t from-[#0D0D10]/80 via-transparent to-transparent pointer-events-none" />
+
+                {/* Cover badge */}
+                <div className="absolute top-2.5 right-2.5">
+                  <span className="px-2.5 py-1 rounded-full bg-black/70 backdrop-blur-md text-[#E6CA85] text-[10px] font-semibold border border-[#C5A059]/30">
+                    Visualização da Capa
+                  </span>
+                </div>
+
+                {/* Hover overlay with Change action */}
+                <div className="absolute inset-0 bg-black/60 backdrop-blur-xs flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-white text-xs font-semibold gap-1.5 p-4">
+                  <Camera className="w-6 h-6 text-[#E6CA85]" />
+                  <span>Clique para alterar a Foto de Capa</span>
+                  <span className="text-[11px] text-[#D8D4CE] font-normal">
+                    Recomendado: foto profissional da dona no studio (formato paisagem)
+                  </span>
+                </div>
+              </div>
+
+              {/* Cover action buttons */}
+              <div className="flex flex-wrap items-center gap-2 mt-3">
+                <button
+                  id="btn-upload-cover-file"
+                  type="button"
+                  onClick={() => coverFileInputRef.current?.click()}
+                  className="py-2 px-3.5 rounded-xl bg-[#22222D] hover:bg-[#2A2A38] border border-[#333342] text-[#E6CA85] text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer"
+                >
+                  <Upload className="w-3.5 h-3.5" />
+                  <span>Escolher Foto da Capa</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setIsCoverUrlInputVisible(!isCoverUrlInputVisible)}
+                  className="py-2 px-3 rounded-xl border border-[#2A2A38] hover:border-[#3A3A4A] text-xs text-[#9E988F] hover:text-[#D8D4CE] transition-colors cursor-pointer"
+                >
+                  {isCoverUrlInputVisible ? 'Ocultar Link' : 'Colar Link URL'}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const defaultCover = INITIAL_SETTINGS.ownerCoverUrl || '';
+                    setOwnerCoverUrl(defaultCover);
+                    updateSettings({ ownerCoverUrl: defaultCover });
+                    setMediaFeedback('Capa padrão restaurada!');
+                    setTimeout(() => setMediaFeedback(null), 3000);
+                  }}
+                  className="py-2 px-3 rounded-xl border border-[#2A2A38] hover:border-[#3A3A4A] text-xs text-[#9E988F] hover:text-[#D8D4CE] transition-colors cursor-pointer"
+                  title="Restaurar capa padrão da dona"
+                >
+                  <RotateCcw className="w-3.5 h-3.5 text-[#C5A059]" />
+                </button>
+              </div>
+
+              {isCoverUrlInputVisible && (
+                <div className="mt-2">
+                  <input
+                    id="input-cover-url"
+                    type="url"
+                    placeholder="https://...link-da-capa.jpg"
+                    value={ownerCoverUrl}
+                    onChange={(e) => {
+                      setOwnerCoverUrl(e.target.value);
+                      updateSettings({ ownerCoverUrl: e.target.value });
+                    }}
+                    className="w-full px-3.5 py-2 rounded-xl border border-[#2A2A38] bg-[#16161B] text-[#F5F3EF] text-xs focus:ring-1 focus:ring-[#C5A059] focus:outline-hidden"
+                  />
+                </div>
+              )}
+
+              {/* Sub-fields for Owner Role and Bio */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4 pt-4 border-t border-[#22222D]">
+                <div>
+                  <label className="block text-xs font-semibold text-[#D8D4CE] mb-1">
+                    Título / Especialidade da Dona
+                  </label>
+                  <input
+                    id="input-settings-owner-role"
+                    type="text"
+                    value={ownerRole}
+                    onChange={(e) => setOwnerRole(e.target.value)}
+                    placeholder="Ex: Master Hair Stylist & Visagista"
+                    className="w-full px-3 py-2 rounded-xl border border-[#2A2A38] bg-[#16161B] text-[#F5F3EF] text-xs focus:ring-1 focus:ring-[#C5A059] focus:outline-hidden"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-[#D8D4CE] mb-1">
+                    Apresentação / Mini Bio do Studio
+                  </label>
+                  <input
+                    id="input-settings-owner-bio"
+                    type="text"
+                    value={ownerBio}
+                    onChange={(e) => setOwnerBio(e.target.value)}
+                    placeholder="Ex: Especialista em mechas, visagismo e saúde capilar..."
+                    className="w-full px-3 py-2 rounded-xl border border-[#2A2A38] bg-[#16161B] text-[#F5F3EF] text-xs focus:ring-1 focus:ring-[#C5A059] focus:outline-hidden"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Save Media CTA */}
+            <div className="mt-4 pt-3 flex justify-end">
+              <button
+                id="btn-save-media-settings"
+                type="button"
+                onClick={handleSaveMedia}
+                className="px-5 py-2.5 rounded-full bg-[#C5A059] hover:bg-[#DFBD69] text-[#0D0D10] text-xs font-bold uppercase tracking-wider flex items-center gap-2 shadow-xs transition-colors cursor-pointer"
+              >
+                <Save className="w-3.5 h-3.5" />
+                <span>Salvar Identidade Visual</span>
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

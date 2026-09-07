@@ -470,4 +470,8 @@ export const INITIAL_SETTINGS: SalonSettings = {
   instagram: '@evelinestudiohair',
   cancellationPolicyNotice:
     'Pedimos aviso com pelo menos 2 horas de antecedência em caso de imprevistos ou reagendamentos.',
+  logoUrl: '/src/assets/images/studio_logo_gold_1788803448864.jpg',
+  ownerCoverUrl: '/src/assets/images/studio_owner_cover_1788803465129.jpg',
+  ownerRole: 'Master Hair Stylist & Visagista',
+  ownerBio: 'Especialista em mechas personalizadas, visagismo e saúde capilar de alto padrão. Atendimento exclusivo e hora marcada.',
 };

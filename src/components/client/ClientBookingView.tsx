@@ -165,50 +165,125 @@ export const ClientBookingView: React.FC = () => {
 
   return (
     <div id="client-booking-experience" className="max-w-3xl mx-auto space-y-6">
-      {/* Salon Header Bento Card */}
-      <div className="bg-[#16161B] rounded-3xl p-6 sm:p-8 border border-[#262630] shadow-2xl text-center relative overflow-hidden">
-        <div className="w-14 h-14 rounded-2xl bg-[#1E1E26] text-[#E6CA85] border border-[#C5A059]/30 flex items-center justify-center mx-auto mb-3 shadow-xs">
-          <Scissors className="w-7 h-7 text-[#E6CA85]" />
+      {/* Salon Header with Studio Owner Cover & Instagram-style Logo */}
+      <div className="bg-[#16161B] rounded-3xl border border-[#262630] shadow-2xl overflow-hidden relative">
+        {/* Cover Banner with Studio Owner Photo */}
+        <div className="relative w-full h-48 sm:h-64 bg-[#121216] overflow-hidden">
+          {settings.ownerCoverUrl ? (
+            <img
+              src={settings.ownerCoverUrl}
+              alt={`${settings.ownerName} - ${settings.name}`}
+              referrerPolicy="no-referrer"
+              className="w-full h-full object-cover object-center transform hover:scale-105 transition-transform duration-700"
+            />
+          ) : (
+            <div className="w-full h-full bg-gradient-to-r from-[#16161B] via-[#22222D] to-[#16161B] flex items-center justify-center">
+              <Sparkles className="w-8 h-8 text-[#C5A059]/40 animate-pulse" />
+            </div>
+          )}
+
+          {/* Dark luxury gradient overlays so text & avatar pop cleanly */}
+          <div className="absolute inset-0 bg-gradient-to-t from-[#16161B] via-[#16161B]/50 to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-r from-[#0D0D10]/80 via-transparent to-[#0D0D10]/80" />
+
+          {/* Top subtle badge on cover */}
+          <div className="absolute top-3.5 right-3.5 sm:top-4 sm:right-4 z-10">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#0D0D10]/80 backdrop-blur-md border border-[#C5A059]/40 text-[#E6CA85] text-[10px] font-bold uppercase tracking-wider shadow-lg">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              Atendimento Exclusivo
+            </span>
+          </div>
         </div>
 
-        <h1 className="text-2xl sm:text-3xl font-serif italic text-[#E6CA85] tracking-tight">
-          {settings.name}
-        </h1>
+        {/* Profile Details & Avatar overlapping the cover */}
+        <div className="px-6 pb-6 sm:px-8 sm:pb-8 pt-0 relative -mt-16 sm:-mt-20 z-10 text-center">
+          {/* Circular Instagram-style Logo / Profile Photo */}
+          <div className="relative inline-block mb-3">
+            <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-full p-1 bg-gradient-to-tr from-[#C5A059] via-[#E6CA85] to-[#8C6D34] shadow-2xl mx-auto">
+              <div className="w-full h-full rounded-full bg-[#16161B] overflow-hidden flex items-center justify-center border-2 border-[#16161B]">
+                {settings.logoUrl ? (
+                  <img
+                    src={settings.logoUrl}
+                    alt={settings.name}
+                    referrerPolicy="no-referrer"
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <Scissors className="w-8 h-8 text-[#E6CA85]" />
+                )}
+              </div>
+            </div>
+            <div className="absolute bottom-1 right-1 w-5 h-5 rounded-full bg-emerald-500 border-2 border-[#16161B] flex items-center justify-center" title="Studio Aberto">
+              <CheckCircle2 className="w-3.5 h-3.5 text-white" />
+            </div>
+          </div>
 
-        <p className="text-xs sm:text-sm text-[#9E988F] mt-1 max-w-md mx-auto">
-          Atendimento personalizado com {settings.ownerName}. Escolha o procedimento e solicite seu horário na grade.
-        </p>
+          <h1 className="text-2xl sm:text-3xl font-serif italic font-bold text-[#E6CA85] tracking-tight">
+            {settings.name}
+          </h1>
 
-        {/* View Switcher: Solicitar Horário vs Acompanhar Solicitação */}
-        <div className="inline-flex items-center p-1 bg-[#121216] rounded-full border border-[#262630] mt-5">
-          <button
-            id="tab-client-new-booking"
-            type="button"
-            onClick={() => {
-              setViewMode('BOOKING');
-              if (currentStep === 4) setCurrentStep(1);
-            }}
-            className={`px-5 py-2 rounded-full text-xs font-semibold transition-all ${
-              viewMode === 'BOOKING'
-                ? 'bg-[#22222D] text-[#E6CA85] border border-[#C5A059]/40 shadow-xs font-bold'
-                : 'text-[#9E988F] hover:text-[#F5F3EF]'
-            }`}
-          >
-            Solicitar Horário
-          </button>
+          <div className="flex flex-wrap items-center justify-center gap-2 mt-1">
+            <span className="text-sm font-semibold text-[#F5F3EF]">
+              {settings.ownerName}
+            </span>
+            <span className="text-xs text-[#C5A059]">✦</span>
+            <span className="text-xs text-[#C5A059] font-medium tracking-wide">
+              {settings.ownerRole || 'Master Hair Stylist & Visagista'}
+            </span>
+          </div>
 
-          <button
-            id="tab-client-check-status"
-            type="button"
-            onClick={() => setViewMode('STATUS_CHECK')}
-            className={`px-5 py-2 rounded-full text-xs font-semibold transition-all ${
-              viewMode === 'STATUS_CHECK'
-                ? 'bg-[#22222D] text-[#E6CA85] border border-[#C5A059]/40 shadow-xs font-bold'
-                : 'text-[#9E988F] hover:text-[#F5F3EF]'
-            }`}
-          >
-            Acompanhar Meu Agendamento
-          </button>
+          <p className="text-xs sm:text-sm text-[#9E988F] mt-2 max-w-lg mx-auto leading-relaxed">
+            {settings.ownerBio || 'Atendimento personalizado com horário marcado, biossegurança e produtos de alta performance para a beleza e saúde dos seus cabelos.'}
+          </p>
+
+          {/* Trust badges pills */}
+          <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-3 mt-4 text-[11px] text-[#D8D4CE]">
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[#1F1F28] border border-[#2A2A38]">
+              <Sparkles className="w-3 h-3 text-[#C5A059]" />
+              Hora Marcada
+            </span>
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[#1F1F28] border border-[#2A2A38]">
+              <ShieldCheck className="w-3 h-3 text-[#C5A059]" />
+              Produtos Premium
+            </span>
+            {settings.address && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[#1F1F28] border border-[#2A2A38] truncate max-w-xs sm:max-w-none">
+                📍 {settings.address}
+              </span>
+            )}
+          </div>
+
+          {/* View Switcher: Solicitar Horário vs Acompanhar Solicitação */}
+          <div className="inline-flex items-center p-1 bg-[#121216] rounded-full border border-[#262630] mt-6 shadow-inner">
+            <button
+              id="tab-client-new-booking"
+              type="button"
+              onClick={() => {
+                setViewMode('BOOKING');
+                if (currentStep === 4) setCurrentStep(1);
+              }}
+              className={`px-5 py-2.5 rounded-full text-xs font-semibold transition-all cursor-pointer ${
+                viewMode === 'BOOKING'
+                  ? 'bg-[#22222D] text-[#E6CA85] border border-[#C5A059]/40 shadow-xs font-bold'
+                  : 'text-[#9E988F] hover:text-[#F5F3EF]'
+              }`}
+            >
+              Solicitar Horário
+            </button>
+
+            <button
+              id="tab-client-check-status"
+              type="button"
+              onClick={() => setViewMode('STATUS_CHECK')}
+              className={`px-5 py-2.5 rounded-full text-xs font-semibold transition-all cursor-pointer ${
+                viewMode === 'STATUS_CHECK'
+                  ? 'bg-[#22222D] text-[#E6CA85] border border-[#C5A059]/40 shadow-xs font-bold'
+                  : 'text-[#9E988F] hover:text-[#F5F3EF]'
+              }`}
+            >
+              Acompanhar Meu Agendamento
+            </button>
+          </div>
         </div>
       </div>
 

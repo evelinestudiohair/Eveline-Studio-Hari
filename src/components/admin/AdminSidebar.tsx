@@ -57,9 +57,23 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
     <aside className="w-64 bg-[#121215] border-r border-[#262630] flex flex-col shrink-0 min-h-screen sticky top-0">
       {/* Brand Header */}
       <div className="p-6 border-b border-[#262630]">
-        <h1 className="text-2xl font-serif italic text-[#E6CA85] tracking-tighter">
-          {settings.name}
-        </h1>
+        <div className="flex items-center gap-3 mb-2">
+          <div className="w-10 h-10 rounded-xl bg-[#1A1A22] border border-[#C5A059]/40 text-[#E6CA85] flex items-center justify-center shadow-xs overflow-hidden shrink-0">
+            {settings.logoUrl ? (
+              <img
+                src={settings.logoUrl}
+                alt={settings.name}
+                referrerPolicy="no-referrer"
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <Scissors className="w-5 h-5 text-[#E6CA85]" />
+            )}
+          </div>
+          <h1 className="text-xl font-serif italic text-[#E6CA85] tracking-tight leading-tight">
+            {settings.name}
+          </h1>
+        </div>
         <div className="mt-2.5 p-2.5 rounded-xl bg-[#181820] border border-[#2A2A38]">
           <div className="flex items-center gap-1.5 text-[10px] font-bold text-emerald-400 uppercase tracking-wider">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />

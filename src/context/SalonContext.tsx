@@ -266,7 +266,14 @@ export const SalonProvider: React.FC<{ children: React.ReactNode }> = ({
         if (parsed && parsed.whatsapp) {
           parsed.whatsapp = normalizeWhatsAppNumber(parsed.whatsapp);
         }
-        return parsed;
+        return {
+          ...INITIAL_SETTINGS,
+          ...parsed,
+          logoUrl: parsed.logoUrl !== undefined ? parsed.logoUrl : INITIAL_SETTINGS.logoUrl,
+          ownerCoverUrl: parsed.ownerCoverUrl !== undefined ? parsed.ownerCoverUrl : INITIAL_SETTINGS.ownerCoverUrl,
+          ownerRole: parsed.ownerRole || INITIAL_SETTINGS.ownerRole,
+          ownerBio: parsed.ownerBio || INITIAL_SETTINGS.ownerBio,
+        };
       } catch {
         return INITIAL_SETTINGS;
       }

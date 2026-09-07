@@ -66,8 +66,17 @@ export const Navbar: React.FC<NavbarProps> = ({
           <div className="flex items-center justify-between h-16">
             {/* Logo and Brand */}
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-[#1A1A22] border border-[#C5A059]/30 text-[#E6CA85] flex items-center justify-center shadow-xs">
-                <Scissors className="w-5 h-5 text-[#E6CA85]" />
+              <div className="w-10 h-10 rounded-2xl bg-[#1A1A22] border border-[#C5A059]/40 text-[#E6CA85] flex items-center justify-center shadow-xs overflow-hidden shrink-0">
+                {settings.logoUrl ? (
+                  <img
+                    src={settings.logoUrl}
+                    alt={settings.name}
+                    referrerPolicy="no-referrer"
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <Scissors className="w-5 h-5 text-[#E6CA85]" />
+                )}
               </div>
               <div>
                 <h1 className="text-xl sm:text-2xl font-serif italic text-[#E6CA85] tracking-tight leading-none">

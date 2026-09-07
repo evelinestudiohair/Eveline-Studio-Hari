@@ -21,7 +21,12 @@ service cloud.firestore {
       return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
-    // Public readable services, weeks, availability, and blocked slots
+    // Public readable services, weeks, availability, blocked slots, and salon settings
+    match /settings/{settingId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
     match /services/{serviceId} {
       allow read: if true;
       allow write: if isAdmin();
@@ -42,9 +47,9 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // Appointments: clients can create with PENDENTE status, admin has full access
+    // Appointments: public read for slot availability & status check, clients can create with PENDENTE status, admin has full control
     match /appointments/{appointmentId} {
-      allow read: if isAdmin() || (resource.data.clientPhone == request.auth.token.phone_number);
+      allow read: if true;
       allow create: if (
         request.resource.data.status == 'PENDENTE' &&
         request.resource.data.clientName is string &&
@@ -61,9 +66,10 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
-    // Notifications: admin only
+    // Notifications: clients can create on booking, admin can read/manage
     match /notifications/{notificationId} {
-      allow read, write: if isAdmin();
+      allow read, update, delete: if isAdmin();
+      allow create: if true;
     }
 
     // Users / Admins: self read, admin write

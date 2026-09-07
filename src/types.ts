@@ -108,6 +108,10 @@ export interface SalonSettings {
   address: string;
   instagram: string;
   cancellationPolicyNotice: string;
+  logoUrl?: string;
+  ownerCoverUrl?: string;
+  ownerRole?: string;
+  ownerBio?: string;
 }
 
 export interface TimeSlotDisplay {
