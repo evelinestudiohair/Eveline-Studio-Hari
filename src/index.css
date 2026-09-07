@@ -1,0 +1,61 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --bg-sand: #0D0D10;
+    --text-charcoal: #F5F3EF;
+    --accent-cognac: #C5A059;
+    --surface-warm: #16161B;
+    --border-warm: #262630;
+    --muted-taupe: #9E988F;
+  }
+
+  body {
+    background-color: #0D0D10;
+    color: #F5F3EF;
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .font-serif-salon,
+  .font-serif {
+    font-family: 'Playfair Display', Georgia, serif;
+  }
+
+  /* Custom subtle scrollbar for matte dark theme */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: #121215;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #2D2D38;
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #C5A059;
+  }
+}
+
+/* Bento card utility helper for Matte Black & Gold styling */
+.bento-card {
+  background-color: #16161B;
+  border: 1px solid #262630;
+  border-radius: 1.5rem; /* rounded-3xl */
+  box-shadow: 0 4px 24px -2px rgba(0, 0, 0, 0.45);
+}
+
+.bento-surface {
+  background-color: #1E1E26;
+  border: 1px solid #2F2F3D;
+  border-radius: 1.5rem;
+}
+
+/* Subtle gold shimmer text utility */
+.text-gold-gradient {
+  background: linear-gradient(135deg, #E6CA85 0%, #C5A059 50%, #DFBD69 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}

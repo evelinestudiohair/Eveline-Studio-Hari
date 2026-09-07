@@ -1,0 +1,6 @@
+{
+  "name": "Sistema de Agendamento Salão",
+  "description": "Sistema completo de agendamento para salão de beleza com controle de disponibilidade, solicitações de clientes, confirmação manual e gestão de vagas.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

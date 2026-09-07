@@ -1,0 +1,158 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Salon administrator or staff user",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 100 },
+        "role": { "type": "string", "enum": ["admin", "staff"] },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["email", "name", "role"]
+    },
+    "Client": {
+      "title": "Client",
+      "description": "Customer contact and profile details",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "maxLength": 120 },
+        "phone": { "type": "string", "maxLength": 20 },
+        "whatsapp": { "type": "string", "maxLength": 20 },
+        "notes": { "type": "string", "maxLength": 500 },
+        "createdAt": { "type": "string" },
+        "lastVisit": { "type": "string" },
+        "totalAppointments": { "type": "number" },
+        "completedAppointments": { "type": "number" }
+      },
+      "required": ["name", "phone", "whatsapp"]
+    },
+    "Service": {
+      "title": "Service",
+      "description": "Procedures offered by the beauty salon",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "maxLength": 100 },
+        "durationMinutes": { "type": "number" },
+        "price": { "type": "number" },
+        "active": { "type": "boolean" },
+        "description": { "type": "string", "maxLength": 500 },
+        "category": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["name", "durationMinutes", "price", "active"]
+    },
+    "DayAvailability": {
+      "title": "DayAvailability",
+      "description": "Weekly day availability configuration and slot capacities",
+      "type": "object",
+      "properties": {
+        "dayOfWeek": { "type": "number" },
+        "dayName": { "type": "string", "maxLength": 30 },
+        "isOpen": { "type": "boolean" },
+        "startTime": { "type": "string", "maxLength": 5 },
+        "endTime": { "type": "string", "maxLength": 5 },
+        "intervalMinutes": { "type": "number" },
+        "defaultCapacity": { "type": "number" }
+      },
+      "required": ["dayOfWeek", "isOpen", "startTime", "endTime"]
+    },
+    "Appointment": {
+      "title": "Appointment",
+      "description": "Booking request, confirmation status and slot allocation",
+      "type": "object",
+      "properties": {
+        "clientName": { "type": "string", "maxLength": 120 },
+        "clientPhone": { "type": "string", "maxLength": 20 },
+        "clientWhatsapp": { "type": "string", "maxLength": 20 },
+        "serviceId": { "type": "string", "maxLength": 64 },
+        "serviceName": { "type": "string", "maxLength": 100 },
+        "servicePrice": { "type": "number" },
+        "serviceDuration": { "type": "number" },
+        "date": { "type": "string", "maxLength": 10 },
+        "time": { "type": "string", "maxLength": 5 },
+        "status": {
+          "type": "string",
+          "enum": ["PENDENTE", "CONFIRMADO", "RECUSADO", "CANCELADO", "AGUARDANDO NOVO HORÁRIO", "FINALIZADO"]
+        },
+        "clientNotes": { "type": "string", "maxLength": 500 },
+        "adminNotes": { "type": "string", "maxLength": 500 },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["clientName", "clientWhatsapp", "serviceName", "date", "time", "status"]
+    },
+    "BlockedSlot": {
+      "title": "BlockedSlot",
+      "description": "Time slot or day blocked by administrator",
+      "type": "object",
+      "properties": {
+        "date": { "type": "string", "maxLength": 10 },
+        "time": { "type": "string", "maxLength": 5 },
+        "isAllDay": { "type": "boolean" },
+        "reason": { "type": "string", "maxLength": 200 },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["date", "isAllDay", "reason"]
+    },
+    "Week": {
+      "title": "Week",
+      "description": "Weekly booking schedule status (OPEN or CLOSED)",
+      "type": "object",
+      "properties": {
+        "startDate": { "type": "string", "maxLength": 10 },
+        "endDate": { "type": "string", "maxLength": 10 },
+        "status": { "type": "string", "enum": ["OPEN", "CLOSED"] },
+        "customMessage": { "type": "string", "maxLength": 300 }
+      },
+      "required": ["startDate", "endDate", "status"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "Admin alerts for new bookings and status changes",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "maxLength": 100 },
+        "message": { "type": "string", "maxLength": 300 },
+        "type": { "type": "string", "enum": ["NEW_REQUEST", "PENDING_REMINDER", "CANCELLATION", "RESCHEDULE"] },
+        "isRead": { "type": "boolean" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["title", "message", "type", "isRead"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Salon administrator credentials and profiles"
+    },
+    "/clients/{clientId}": {
+      "schema": "Client",
+      "description": "Client directory and history"
+    },
+    "/services/{serviceId}": {
+      "schema": "Service",
+      "description": "Available salon procedures"
+    },
+    "/availability/{dayId}": {
+      "schema": "DayAvailability",
+      "description": "Weekly day availability configurations"
+    },
+    "/appointments/{appointmentId}": {
+      "schema": "Appointment",
+      "description": "Appointment requests and confirmed bookings"
+    },
+    "/blocked_slots/{blockId}": {
+      "schema": "BlockedSlot",
+      "description": "Blocked hours and days"
+    },
+    "/weeks/{weekId}": {
+      "schema": "Week",
+      "description": "Weekly schedule openness status"
+    },
+    "/notifications/{notificationId}": {
+      "schema": "Notification",
+      "description": "Administrative notifications and alerts"
+    }
+  }
+}
