@@ -25,6 +25,8 @@ import {
   Trash2,
   RefreshCw,
   Scissors,
+  Database,
+  Cloud,
 } from 'lucide-react';
 import {
   createWhatsAppLink,
@@ -32,6 +34,7 @@ import {
   formatPhoneBR,
 } from '../../utils/dateTime';
 import { INITIAL_SETTINGS } from '../../data/initialData';
+import { compressImageFile, compressBase64Image } from '../../utils/imageCompressor';
 
 export const AdminSettings: React.FC = () => {
   const {
@@ -40,7 +43,75 @@ export const AdminSettings: React.FC = () => {
     resetToSampleData,
     adminCredentials,
     updateAdminCredentials,
+    firebaseStatus,
+    syncWithFirebase,
+    bootstrapFirebase,
   } = useSalon();
+
+  const [isSyncingFirebase, setIsSyncingFirebase] = useState(false);
+  const [firebaseActionFeedback, setFirebaseActionFeedback] = useState<{
+    type: 'success' | 'error';
+    message: string;
+  } | null>(null);
+
+  const handleSyncFirebaseNow = async () => {
+    setIsSyncingFirebase(true);
+    setFirebaseActionFeedback(null);
+    try {
+      const res = await syncWithFirebase();
+      if (res.success) {
+        setFirebaseActionFeedback({
+          type: 'success',
+          message: res.message || 'Todas as coleções foram sincronizadas com o Firebase!',
+        });
+      } else {
+        setFirebaseActionFeedback({
+          type: 'error',
+          message: res.message || 'Erro ao sincronizar com o Firebase.',
+        });
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Erro na sincronização';
+      setFirebaseActionFeedback({ type: 'error', message: msg });
+    } finally {
+      setIsSyncingFirebase(false);
+      setTimeout(() => setFirebaseActionFeedback(null), 5000);
+    }
+  };
+
+  const handleBootstrapFirebaseNow = async () => {
+    if (
+      !window.confirm(
+        'Deseja inicializar/recarregar todas as coleções base no Firestore (serviços, semanas, clientes e regras)?'
+      )
+    ) {
+      return;
+    }
+
+    setIsSyncingFirebase(true);
+    setFirebaseActionFeedback(null);
+    try {
+      const res = await bootstrapFirebase();
+      if (res.success) {
+        setFirebaseActionFeedback({
+          type: 'success',
+          message: res.message || 'Coleções inicializadas no Firebase Firestore com sucesso!',
+        });
+      } else {
+        setFirebaseActionFeedback({
+          type: 'error',
+          message: res.message || 'Erro ao inicializar coleções no Firebase.',
+        });
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Erro ao inicializar';
+      setFirebaseActionFeedback({ type: 'error', message: msg });
+    } finally {
+      setIsSyncingFirebase(false);
+      setTimeout(() => setFirebaseActionFeedback(null), 5000);
+    }
+  };
+
 
   const [name, setName] = useState(settings.name);
   const [ownerName, setOwnerName] = useState(settings.ownerName);
@@ -77,7 +148,7 @@ export const AdminSettings: React.FC = () => {
     message: string;
   } | null>(null);
 
-  const handleLogoFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleLogoFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -86,20 +157,26 @@ export const AdminSettings: React.FC = () => {
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const result = event.target?.result as string;
-      if (result) {
-        setLogoUrl(result);
-        updateSettings({ logoUrl: result });
-        setMediaFeedback('Logo atualizada com sucesso!');
-        setTimeout(() => setMediaFeedback(null), 3500);
-      }
-    };
-    reader.readAsDataURL(file);
+    try {
+      setMediaFeedback('Otimizando tamanho da imagem...');
+      const compressed = await compressImageFile(file, {
+        maxWidth: 400,
+        maxHeight: 400,
+        quality: 0.8,
+        maxSizeBytes: 100 * 1024,
+      });
+
+      setLogoUrl(compressed);
+      updateSettings({ logoUrl: compressed });
+      setMediaFeedback('Logo otimizada e salva com sucesso!');
+      setTimeout(() => setMediaFeedback(null), 3500);
+    } catch {
+      setMediaFeedback('Erro ao processar imagem.');
+      setTimeout(() => setMediaFeedback(null), 3500);
+    }
   };
 
-  const handleCoverFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleCoverFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -108,24 +185,59 @@ export const AdminSettings: React.FC = () => {
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const result = event.target?.result as string;
-      if (result) {
-        setOwnerCoverUrl(result);
-        updateSettings({ ownerCoverUrl: result });
-        setMediaFeedback('Foto de capa da dona atualizada com sucesso!');
-        setTimeout(() => setMediaFeedback(null), 3500);
-      }
-    };
-    reader.readAsDataURL(file);
+    try {
+      setMediaFeedback('Otimizando foto de capa...');
+      const compressed = await compressImageFile(file, {
+        maxWidth: 800,
+        maxHeight: 800,
+        quality: 0.75,
+        maxSizeBytes: 150 * 1024,
+      });
+
+      setOwnerCoverUrl(compressed);
+      updateSettings({ ownerCoverUrl: compressed });
+      setMediaFeedback('Foto de capa otimizada e salva com sucesso!');
+      setTimeout(() => setMediaFeedback(null), 3500);
+    } catch {
+      setMediaFeedback('Erro ao processar imagem.');
+      setTimeout(() => setMediaFeedback(null), 3500);
+    }
   };
 
-  const handleSaveMedia = (e: React.FormEvent) => {
+  const handleSaveMedia = async (e: React.FormEvent) => {
     e.preventDefault();
+    setMediaFeedback('Salvando identidade visual...');
+
+    let optimizedLogo = logoUrl;
+    let optimizedCover = ownerCoverUrl;
+
+    try {
+      if (optimizedLogo?.startsWith('data:image') && optimizedLogo.length > 130 * 1024) {
+        optimizedLogo = await compressBase64Image(optimizedLogo, {
+          maxWidth: 400,
+          maxHeight: 400,
+          quality: 0.8,
+          maxSizeBytes: 100 * 1024,
+        });
+        setLogoUrl(optimizedLogo);
+      }
+
+      if (optimizedCover?.startsWith('data:image') && optimizedCover.length > 180 * 1024) {
+        optimizedCover = await compressBase64Image(optimizedCover, {
+          maxWidth: 800,
+          maxHeight: 800,
+          quality: 0.75,
+          maxSizeBytes: 150 * 1024,
+        });
+        setOwnerCoverUrl(optimizedCover);
+      }
+    } catch (err) {
+      console.warn('Erro ao otimizar imagens da mídia:', err);
+    }
+
     updateSettings({
-      logoUrl,
-      ownerCoverUrl,
+      logoUrl: optimizedLogo,
+      ownerCoverUrl: optimizedCover,
       ownerRole,
       ownerBio,
     });
@@ -865,10 +977,10 @@ export const AdminSettings: React.FC = () => {
           <div className="bg-[#16161B] rounded-3xl p-5 border border-[#262630] flex items-center justify-between gap-4">
             <div>
               <h4 className="text-sm font-serif font-bold text-[#E6CA85]">
-                Restaurar Dados de Exemplo
+                Restaurar Dados Locais de Exemplo
               </h4>
               <p className="text-xs text-[#9E988F] mt-0.5">
-                Recarrega as semanas, clientes (Maria, Joana), solicitações pendentes e grade completa de exemplo.
+                Recarrega as semanas, clientes (Maria, Joana), solicitações pendentes e grade completa no navegador.
               </p>
             </div>
 
@@ -881,6 +993,231 @@ export const AdminSettings: React.FC = () => {
               <RotateCcw className="w-3.5 h-3.5 text-[#C5A059]" />
               <span>Restaurar</span>
             </button>
+          </div>
+
+          {/* ============================================================ */}
+          {/* FIREBASE FIRESTORE INTEGRATION PANEL                         */}
+          {/* ============================================================ */}
+          <div
+            id="admin-firebase-integration-panel"
+            className="bg-[#16161B] rounded-3xl p-5 sm:p-6 border border-[#262630] shadow-2xs space-y-5"
+          >
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-[#262630]">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-[#22222D] border border-[#333342] flex items-center justify-center text-[#C5A059]">
+                  <Database className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-serif font-bold text-[#E6CA85]">
+                      Integração com Firebase Firestore
+                    </h3>
+                    <span
+                      className={`inline-flex items-center gap-1.5 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
+                        firebaseStatus.isConnected
+                          ? 'bg-emerald-950/60 border border-emerald-900/60 text-emerald-400'
+                          : firebaseStatus.error
+                          ? 'bg-rose-950/60 border border-rose-900/60 text-rose-400'
+                          : 'bg-amber-950/60 border border-amber-900/60 text-amber-400'
+                      }`}
+                    >
+                      <span
+                        className={`w-1.5 h-1.5 rounded-full ${
+                          firebaseStatus.isConnected
+                            ? 'bg-emerald-400 animate-pulse'
+                            : firebaseStatus.error
+                            ? 'bg-rose-400'
+                            : 'bg-amber-400 animate-pulse'
+                        }`}
+                      />
+                      {firebaseStatus.isConnected
+                        ? 'Conectado em Tempo Real'
+                        : firebaseStatus.error
+                        ? 'Erro de Conexão'
+                        : 'Sincronizando...'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-[#9E988F] mt-0.5">
+                    Banco de dados em nuvem ativo com sincronização bidirecional e regras de segurança configuradas.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  id="btn-sync-all-firebase"
+                  type="button"
+                  disabled={isSyncingFirebase}
+                  onClick={handleSyncFirebaseNow}
+                  className="px-4 py-2 rounded-full bg-[#C5A059] hover:bg-[#D4B26F] text-[#0D0D10] text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 transition-colors disabled:opacity-50 cursor-pointer shadow-2xs"
+                  title="Sincroniza todos os registros locais para as coleções do Firebase"
+                >
+                  <RefreshCw
+                    className={`w-3.5 h-3.5 ${isSyncingFirebase ? 'animate-spin' : ''}`}
+                  />
+                  <span>
+                    {isSyncingFirebase ? 'Sincronizando...' : 'Sincronizar Coleções'}
+                  </span>
+                </button>
+
+                <button
+                  id="btn-bootstrap-firebase"
+                  type="button"
+                  disabled={isSyncingFirebase}
+                  onClick={handleBootstrapFirebaseNow}
+                  className="px-3.5 py-2 rounded-full bg-[#22222D] border border-[#333342] text-[#D8D4CE] hover:bg-[#2A2A38] text-xs font-semibold flex items-center gap-1.5 transition-colors disabled:opacity-50 cursor-pointer"
+                  title="Inicializa as coleções no Firebase com dados padrão completos"
+                >
+                  <Cloud className="w-3.5 h-3.5 text-[#C5A059]" />
+                  <span>Inicializar Nuvem</span>
+                </button>
+              </div>
+            </div>
+
+            {firebaseActionFeedback && (
+              <div
+                className={`p-3.5 rounded-xl border text-xs font-semibold flex items-center gap-2 ${
+                  firebaseActionFeedback.type === 'success'
+                    ? 'bg-emerald-950/50 border-emerald-900/60 text-emerald-300'
+                    : 'bg-rose-950/50 border-rose-900/60 text-rose-300'
+                }`}
+              >
+                {firebaseActionFeedback.type === 'success' ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                ) : (
+                  <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                )}
+                <span>{firebaseActionFeedback.message}</span>
+              </div>
+            )}
+
+            {/* Firebase Metadata Overview */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="p-3.5 rounded-2xl bg-[#121216] border border-[#262630]">
+                <span className="text-[10px] uppercase tracking-wider text-[#9E988F] font-semibold block">
+                  Projeto Firebase
+                </span>
+                <span className="text-xs font-mono font-bold text-[#E6CA85] mt-0.5 block truncate">
+                  eveline-studio-hair
+                </span>
+              </div>
+              <div className="p-3.5 rounded-2xl bg-[#121216] border border-[#262630]">
+                <span className="text-[10px] uppercase tracking-wider text-[#9E988F] font-semibold block">
+                  Instância Firestore
+                </span>
+                <span className="text-xs font-mono font-bold text-[#D8D4CE] mt-0.5 block truncate" title="ai-studio-sistemadeagendam-a637c1d7-db76-4865-a5bc-7c2b2b2dbc00">
+                  ai-studio-sistemadeagendam...
+                </span>
+              </div>
+              <div className="p-3.5 rounded-2xl bg-[#121216] border border-[#262630]">
+                <span className="text-[10px] uppercase tracking-wider text-[#9E988F] font-semibold block">
+                  Última Sincronização
+                </span>
+                <span className="text-xs font-medium text-[#9E988F] mt-0.5 block">
+                  {firebaseStatus.lastSyncTime
+                    ? new Date(firebaseStatus.lastSyncTime).toLocaleTimeString('pt-BR', {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        second: '2-digit',
+                      })
+                    : 'Ativa em tempo real'}
+                </span>
+              </div>
+            </div>
+
+            {/* Collections Grid */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-semibold text-[#D8D4CE] uppercase tracking-wider">
+                  Coleções Integradas no Firestore
+                </span>
+                <span className="text-[11px] text-[#9E988F]">
+                  8 coleções mapeadas e monitoradas
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                <div className="p-3 rounded-xl bg-[#121216] border border-[#262630] flex flex-col justify-between">
+                  <span className="text-[11px] font-medium text-[#9E988F]">services</span>
+                  <div className="flex items-baseline justify-between mt-1">
+                    <span className="text-sm font-bold text-[#F5F3EF]">
+                      {firebaseStatus.collectionsCount.services}
+                    </span>
+                    <span className="text-[10px] text-emerald-400">ativos</span>
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-xl bg-[#121216] border border-[#262630] flex flex-col justify-between">
+                  <span className="text-[11px] font-medium text-[#9E988F]">appointments</span>
+                  <div className="flex items-baseline justify-between mt-1">
+                    <span className="text-sm font-bold text-[#F5F3EF]">
+                      {firebaseStatus.collectionsCount.appointments}
+                    </span>
+                    <span className="text-[10px] text-[#C5A059]">pedidos</span>
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-xl bg-[#121216] border border-[#262630] flex flex-col justify-between">
+                  <span className="text-[11px] font-medium text-[#9E988F]">clients</span>
+                  <div className="flex items-baseline justify-between mt-1">
+                    <span className="text-sm font-bold text-[#F5F3EF]">
+                      {firebaseStatus.collectionsCount.clients}
+                    </span>
+                    <span className="text-[10px] text-sky-400">clientes</span>
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-xl bg-[#121216] border border-[#262630] flex flex-col justify-between">
+                  <span className="text-[11px] font-medium text-[#9E988F]">availability</span>
+                  <div className="flex items-baseline justify-between mt-1">
+                    <span className="text-sm font-bold text-[#F5F3EF]">
+                      {firebaseStatus.collectionsCount.availability}
+                    </span>
+                    <span className="text-[10px] text-[#9E988F]">dias</span>
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-xl bg-[#121216] border border-[#262630] flex flex-col justify-between">
+                  <span className="text-[11px] font-medium text-[#9E988F]">weeks</span>
+                  <div className="flex items-baseline justify-between mt-1">
+                    <span className="text-sm font-bold text-[#F5F3EF]">
+                      {firebaseStatus.collectionsCount.weeks}
+                    </span>
+                    <span className="text-[10px] text-[#9E988F]">semanas</span>
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-xl bg-[#121216] border border-[#262630] flex flex-col justify-between">
+                  <span className="text-[11px] font-medium text-[#9E988F]">blocked_slots</span>
+                  <div className="flex items-baseline justify-between mt-1">
+                    <span className="text-sm font-bold text-[#F5F3EF]">
+                      {firebaseStatus.collectionsCount.blockedSlots}
+                    </span>
+                    <span className="text-[10px] text-amber-400">bloqueios</span>
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-xl bg-[#121216] border border-[#262630] flex flex-col justify-between">
+                  <span className="text-[11px] font-medium text-[#9E988F]">notifications</span>
+                  <div className="flex items-baseline justify-between mt-1">
+                    <span className="text-sm font-bold text-[#F5F3EF]">
+                      {firebaseStatus.collectionsCount.notifications}
+                    </span>
+                    <span className="text-[10px] text-purple-400">avisos</span>
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-xl bg-[#121216] border border-[#262630] flex flex-col justify-between">
+                  <span className="text-[11px] font-medium text-[#9E988F]">settings</span>
+                  <div className="flex items-baseline justify-between mt-1">
+                    <span className="text-sm font-bold text-[#F5F3EF]">
+                      {firebaseStatus.collectionsCount.settings}
+                    </span>
+                    <span className="text-[10px] text-emerald-400">perfil</span>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>

@@ -16,9 +16,9 @@ export const db =
 // Initialize Firebase Auth
 export const auth = getAuth(app);
 
-// Initialize Google Analytics safely if in browser environment
+// Initialize Google Analytics only if measurementId is provided
 export const analytics =
-  typeof window !== 'undefined'
+  typeof window !== 'undefined' && Boolean(firebaseConfig.measurementId)
     ? isSupported()
         .then((supported) => (supported ? getAnalytics(app) : null))
         .catch(() => null)

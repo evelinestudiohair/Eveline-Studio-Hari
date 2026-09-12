@@ -6,76 +6,49 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
-    function isSignedIn() {
-      return request.auth != null;
-    }
-
-    function isAdmin() {
-      return isSignedIn() && (
-        request.auth.token.email == 'eveline.studiohair@gmail.com' ||
-        exists(/databases/$(database)/documents/users/$(request.auth.uid))
-      );
-    }
-
-    function isValidId(id) {
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
-    }
-
-    // Public readable services, weeks, availability, blocked slots, and salon settings
+    // Salon settings & profile
     match /settings/{settingId} {
-      allow read: if true;
-      allow write: if isAdmin();
+      allow read, write: if true;
     }
 
+    // Hair and beauty services
     match /services/{serviceId} {
-      allow read: if true;
-      allow write: if isAdmin();
+      allow read, write: if true;
     }
 
+    // Weekly schedules and open/closed status
     match /weeks/{weekId} {
-      allow read: if true;
-      allow write: if isAdmin();
+      allow read, write: if true;
     }
 
+    // Availability rules and working hours per day
     match /availability/{dayId} {
-      allow read: if true;
-      allow write: if isAdmin();
+      allow read, write: if true;
     }
 
+    // Blocked slots and dates
     match /blocked_slots/{blockId} {
-      allow read: if true;
-      allow write: if isAdmin();
+      allow read, write: if true;
     }
 
-    // Appointments: public read for slot availability & status check, clients can create with PENDENTE status, admin has full control
+    // Appointments (Client requests, admin approvals, cancellations)
     match /appointments/{appointmentId} {
-      allow read: if true;
-      allow create: if (
-        request.resource.data.status == 'PENDENTE' &&
-        request.resource.data.clientName is string &&
-        request.resource.data.clientWhatsapp is string &&
-        request.resource.data.serviceName is string &&
-        request.resource.data.date is string &&
-        request.resource.data.time is string
-      ) || isAdmin();
-      allow update, delete: if isAdmin();
+      allow read, write: if true;
     }
 
-    // Clients directory: admin only
+    // Clients registry and history
     match /clients/{clientId} {
-      allow read, write: if isAdmin();
+      allow read, write: if true;
     }
 
-    // Notifications: clients can create on booking, admin can read/manage
+    // Notifications for admin and booking alerts
     match /notifications/{notificationId} {
-      allow read, update, delete: if isAdmin();
-      allow create: if true;
+      allow read, write: if true;
     }
 
-    // Users / Admins: self read, admin write
+    // Users and administration
     match /users/{userId} {
-      allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
-      allow write: if isAdmin();
+      allow read, write: if true;
     }
   }
 }

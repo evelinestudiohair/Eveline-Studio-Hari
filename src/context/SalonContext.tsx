@@ -28,6 +28,27 @@ import {
   formatDateBR,
   normalizeWhatsAppNumber,
 } from '../utils/dateTime';
+import { compressBase64Image } from '../utils/imageCompressor';
+import {
+  saveSettingsToFirebase,
+  saveAppointmentToFirebase,
+  deleteAppointmentFromFirebase,
+  saveServiceToFirebase,
+  deleteServiceFromFirebase,
+  saveAvailabilityToFirebase,
+  saveWeekToFirebase,
+  saveBlockedSlotToFirebase,
+  deleteBlockedSlotFromFirebase,
+  saveClientToFirebase,
+  saveNotificationToFirebase,
+  subscribeToFirestoreCollection,
+  subscribeToSettings,
+  syncAllStateToFirebase,
+  checkFirebaseHealth,
+  bootstrapFirestoreCollections,
+  FirebaseSyncStatus,
+} from '../services/firebaseService';
+import { COLLECTIONS } from '../lib/firebase';
 
 interface SalonContextType {
   // Current view mode
@@ -68,6 +89,12 @@ interface SalonContextType {
   clients: Client[];
   notifications: NotificationItem[];
   settings: SalonSettings;
+
+  // Firebase integration status & sync
+  firebaseStatus: FirebaseSyncStatus;
+  syncWithFirebase: () => Promise<{ success: boolean; message: string }>;
+  bootstrapFirebase: () => Promise<{ success: boolean; message: string }>;
+
 
   // Week navigation
   selectedWeekId: string;
@@ -319,6 +346,261 @@ export const SalonProvider: React.FC<{ children: React.ReactNode }> = ({
     localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(settings));
   }, [settings]);
 
+  // Preventive cleanup: if loaded settings contain large raw image data (e.g. >150KB), compress it automatically
+  useEffect(() => {
+    let active = true;
+    const optimizeStoredImages = async () => {
+      let needsUpdate = false;
+      let safeLogo = settings.logoUrl;
+      let safeCover = settings.ownerCoverUrl;
+
+      if (safeLogo && safeLogo.startsWith('data:image') && safeLogo.length > 130 * 1024) {
+        safeLogo = await compressBase64Image(safeLogo, {
+          maxWidth: 400,
+          maxHeight: 400,
+          quality: 0.8,
+          maxSizeBytes: 100 * 1024,
+        });
+        needsUpdate = true;
+      }
+
+      if (safeCover && safeCover.startsWith('data:image') && safeCover.length > 180 * 1024) {
+        safeCover = await compressBase64Image(safeCover, {
+          maxWidth: 800,
+          maxHeight: 800,
+          quality: 0.75,
+          maxSizeBytes: 150 * 1024,
+        });
+        needsUpdate = true;
+      }
+
+      if (needsUpdate && active) {
+        setSettings((prev) => {
+          const updated = { ...prev, logoUrl: safeLogo, ownerCoverUrl: safeCover };
+          saveSettingsToFirebase(updated).catch(console.warn);
+          return updated;
+        });
+      }
+    };
+
+    optimizeStoredImages();
+    return () => {
+      active = false;
+    };
+  }, []); // Run once on startup
+
+  // Firebase integration status
+  const [firebaseStatus, setFirebaseStatus] = useState<FirebaseSyncStatus>({
+    isConnected: false,
+    isSyncing: true,
+    lastSyncTime: null,
+    collectionsCount: {
+      services: services.length,
+      appointments: appointments.length,
+      clients: clients.length,
+      availability: availability.length,
+      blockedSlots: blockedSlots.length,
+      weeks: weeks.length,
+      notifications: notifications.length,
+      settings: 1,
+    },
+    error: null,
+  });
+
+  // Real-time Firestore Subscriptions & Auto-seed
+  useEffect(() => {
+    let isMounted = true;
+
+    // Check Firebase health and seed if empty
+    const initFirebase = async () => {
+      try {
+        const health = await checkFirebaseHealth();
+        if (!isMounted) return;
+
+        if (health.connected) {
+          // If remote is empty, seed all collections with initial data
+          if (health.counts.services === 0 && health.counts.appointments === 0) {
+            await bootstrapFirestoreCollections();
+          }
+
+          setFirebaseStatus({
+            isConnected: true,
+            isSyncing: false,
+            lastSyncTime: new Date().toLocaleTimeString('pt-BR'),
+            collectionsCount: health.counts,
+            error: null,
+          });
+        } else {
+          setFirebaseStatus((prev) => ({
+            ...prev,
+            isConnected: false,
+            isSyncing: false,
+            error: health.error,
+          }));
+        }
+      } catch (err: unknown) {
+        if (!isMounted) return;
+        const msg = err instanceof Error ? err.message : 'Erro ao inicializar Firebase';
+        setFirebaseStatus((prev) => ({
+          ...prev,
+          isConnected: false,
+          isSyncing: false,
+          error: msg,
+        }));
+      }
+    };
+
+    initFirebase();
+
+    // Subscribe to Firestore collections in real-time
+    const unsubServices = subscribeToFirestoreCollection<Service>(
+      COLLECTIONS.SERVICES,
+      (remoteServices) => {
+        if (remoteServices && remoteServices.length > 0) {
+          setServices(remoteServices);
+          setFirebaseStatus((prev) => ({
+            ...prev,
+            collectionsCount: {
+              ...prev.collectionsCount,
+              services: remoteServices.length,
+            },
+            lastSyncTime: new Date().toLocaleTimeString('pt-BR'),
+          }));
+        }
+      }
+    );
+
+    const unsubAppointments = subscribeToFirestoreCollection<Appointment>(
+      COLLECTIONS.APPOINTMENTS,
+      (remoteApts) => {
+        if (remoteApts) {
+          setAppointments(remoteApts);
+          setFirebaseStatus((prev) => ({
+            ...prev,
+            collectionsCount: {
+              ...prev.collectionsCount,
+              appointments: remoteApts.length,
+            },
+            lastSyncTime: new Date().toLocaleTimeString('pt-BR'),
+          }));
+        }
+      }
+    );
+
+    const unsubClients = subscribeToFirestoreCollection<Client>(
+      COLLECTIONS.CLIENTS,
+      (remoteClients) => {
+        if (remoteClients && remoteClients.length > 0) {
+          setClients(remoteClients);
+          setFirebaseStatus((prev) => ({
+            ...prev,
+            collectionsCount: {
+              ...prev.collectionsCount,
+              clients: remoteClients.length,
+            },
+            lastSyncTime: new Date().toLocaleTimeString('pt-BR'),
+          }));
+        }
+      }
+    );
+
+    const unsubAvailability = subscribeToFirestoreCollection<DayAvailabilityConfig>(
+      COLLECTIONS.AVAILABILITY,
+      (remoteAvail) => {
+        if (remoteAvail && remoteAvail.length > 0) {
+          setAvailability(remoteAvail);
+        }
+      }
+    );
+
+    const unsubBlocked = subscribeToFirestoreCollection<BlockedSlot>(
+      COLLECTIONS.BLOCKED_SLOTS,
+      (remoteBlocked) => {
+        if (remoteBlocked) {
+          setBlockedSlots(remoteBlocked);
+        }
+      }
+    );
+
+    const unsubWeeks = subscribeToFirestoreCollection<WeekConfig>(
+      COLLECTIONS.WEEKS,
+      (remoteWeeks) => {
+        if (remoteWeeks && remoteWeeks.length > 0) {
+          setWeeks(remoteWeeks);
+        }
+      }
+    );
+
+    const unsubNotifs = subscribeToFirestoreCollection<NotificationItem>(
+      COLLECTIONS.NOTIFICATIONS,
+      (remoteNotifs) => {
+        if (remoteNotifs) {
+          setNotifications(remoteNotifs);
+        }
+      }
+    );
+
+    const unsubSettings = subscribeToSettings((remoteSettings) => {
+      if (remoteSettings) {
+        setSettings((prev) => ({ ...prev, ...remoteSettings }));
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      unsubServices();
+      unsubAppointments();
+      unsubClients();
+      unsubAvailability();
+      unsubBlocked();
+      unsubWeeks();
+      unsubNotifs();
+      unsubSettings();
+    };
+  }, []);
+
+  // Force manual sync to Firebase
+  const syncWithFirebase = async (): Promise<{ success: boolean; message: string }> => {
+    setFirebaseStatus((prev) => ({ ...prev, isSyncing: true }));
+    const result = await syncAllStateToFirebase({
+      services,
+      availability,
+      weeks,
+      appointments,
+      blockedSlots,
+      clients,
+      notifications,
+      settings,
+    });
+
+    const health = await checkFirebaseHealth();
+    setFirebaseStatus({
+      isConnected: health.connected,
+      isSyncing: false,
+      lastSyncTime: new Date().toLocaleTimeString('pt-BR'),
+      collectionsCount: health.counts,
+      error: health.error,
+    });
+
+    return result;
+  };
+
+  // Force bootstrap / reset Firebase data
+  const bootstrapFirebase = async (): Promise<{ success: boolean; message: string }> => {
+    setFirebaseStatus((prev) => ({ ...prev, isSyncing: true }));
+    const result = await bootstrapFirestoreCollections();
+    const health = await checkFirebaseHealth();
+    setFirebaseStatus({
+      isConnected: health.connected,
+      isSyncing: false,
+      lastSyncTime: new Date().toLocaleTimeString('pt-BR'),
+      collectionsCount: health.counts,
+      error: health.error,
+    });
+    return result;
+  };
+
+
   // Current week resolution
   const currentWeek =
     weeks.find((w) => w.id === selectedWeekId) ||
@@ -354,6 +636,7 @@ export const SalonProvider: React.FC<{ children: React.ReactNode }> = ({
     };
 
     setClients((prev) => [newClient, ...prev]);
+    saveClientToFirebase(newClient).catch(console.warn);
     return newClient;
   };
 
@@ -455,12 +738,12 @@ export const SalonProvider: React.FC<{ children: React.ReactNode }> = ({
     setAppointments((prev) => [newAppointment, ...prev]);
 
     // Update client stats
+    const updatedClient = {
+      ...client,
+      totalAppointments: (client.totalAppointments || 0) + 1,
+    };
     setClients((prev) =>
-      prev.map((c) =>
-        c.id === client.id
-          ? { ...c, totalAppointments: (c.totalAppointments || 0) + 1 }
-          : c
-      )
+      prev.map((c) => (c.id === client.id ? updatedClient : c))
     );
 
     // Create Notification for Admin
@@ -475,6 +758,11 @@ export const SalonProvider: React.FC<{ children: React.ReactNode }> = ({
     };
 
     setNotifications((prev) => [newNotif, ...prev]);
+
+    // Persist to Firebase in real-time
+    saveAppointmentToFirebase(newAppointment).catch(console.warn);
+    saveNotificationToFirebase(newNotif).catch(console.warn);
+    saveClientToFirebase(updatedClient).catch(console.warn);
 
     return {
       success: true,
@@ -522,27 +810,25 @@ export const SalonProvider: React.FC<{ children: React.ReactNode }> = ({
     }
 
     const nowIso = new Date().toISOString();
+    const updatedApt: Appointment = {
+      ...apt,
+      status: 'CONFIRMADO',
+      updatedAt: nowIso,
+      history: [
+        ...apt.history,
+        {
+          status: 'CONFIRMADO',
+          timestamp: nowIso,
+          note: 'Agendamento confirmado pela administradora. Vaga reservada.',
+        },
+      ],
+    };
 
     setAppointments((prev) =>
-      prev.map((item) => {
-        if (item.id === id) {
-          return {
-            ...item,
-            status: 'CONFIRMADO',
-            updatedAt: nowIso,
-            history: [
-              ...item.history,
-              {
-                status: 'CONFIRMADO',
-                timestamp: nowIso,
-                note: 'Agendamento confirmado pela administradora. Vaga reservada.',
-              },
-            ],
-          };
-        }
-        return item;
-      })
+      prev.map((item) => (item.id === id ? updatedApt : item))
     );
+
+    saveAppointmentToFirebase(updatedApt).catch(console.warn);
 
     return { success: true, message: 'Agendamento confirmado com sucesso!' };
   };
@@ -550,27 +836,27 @@ export const SalonProvider: React.FC<{ children: React.ReactNode }> = ({
   // 3. Admin Refuses Appointment
   const refuseAppointment = (id: string, reason?: string) => {
     const nowIso = new Date().toISOString();
-    setAppointments((prev) =>
-      prev.map((item) => {
-        if (item.id === id) {
-          return {
-            ...item,
+    const target = appointments.find((a) => a.id === id);
+    if (target) {
+      const updatedApt: Appointment = {
+        ...target,
+        status: 'RECUSADO',
+        adminNotes: reason || target.adminNotes,
+        updatedAt: nowIso,
+        history: [
+          ...target.history,
+          {
             status: 'RECUSADO',
-            adminNotes: reason || item.adminNotes,
-            updatedAt: nowIso,
-            history: [
-              ...item.history,
-              {
-                status: 'RECUSADO',
-                timestamp: nowIso,
-                note: `Agendamento recusado${reason ? `: ${reason}` : ''}.`,
-              },
-            ],
-          };
-        }
-        return item;
-      })
-    );
+            timestamp: nowIso,
+            note: `Agendamento recusado${reason ? `: ${reason}` : ''}.`,
+          },
+        ],
+      };
+      setAppointments((prev) =>
+        prev.map((item) => (item.id === id ? updatedApt : item))
+      );
+      saveAppointmentToFirebase(updatedApt).catch(console.warn);
+    }
   };
 
   // 4. Admin Offers Alternative Slot (Status changes to AGUARDANDO NOVO HORÁRIO)
@@ -581,71 +867,67 @@ export const SalonProvider: React.FC<{ children: React.ReactNode }> = ({
     alternatives: string[]
   ) => {
     const nowIso = new Date().toISOString();
-    setAppointments((prev) =>
-      prev.map((item) => {
-        if (item.id === id) {
-          return {
-            ...item,
+    const target = appointments.find((a) => a.id === id);
+    if (target) {
+      const updatedApt: Appointment = {
+        ...target,
+        status: 'AGUARDANDO NOVO HORÁRIO',
+        offeredDate: newDate,
+        offeredTime: newTime,
+        offeredAlternatives: alternatives,
+        updatedAt: nowIso,
+        history: [
+          ...target.history,
+          {
             status: 'AGUARDANDO NOVO HORÁRIO',
-            offeredDate: newDate,
-            offeredTime: newTime,
-            offeredAlternatives: alternatives,
-            updatedAt: nowIso,
-            history: [
-              ...item.history,
-              {
-                status: 'AGUARDANDO NOVO HORÁRIO',
-                timestamp: nowIso,
-                note: `Administradora sugeriu novo horário: ${newDate} às ${newTime}.`,
-              },
-            ],
-          };
-        }
-        return item;
-      })
-    );
+            timestamp: nowIso,
+            note: `Administradora sugeriu novo horário: ${newDate} às ${newTime}.`,
+          },
+        ],
+      };
+      setAppointments((prev) =>
+        prev.map((item) => (item.id === id ? updatedApt : item))
+      );
+      saveAppointmentToFirebase(updatedApt).catch(console.warn);
+    }
   };
 
   // 5. Cancel Appointment (Frees slot immediately)
   const cancelAppointment = (id: string, reason?: string) => {
     const nowIso = new Date().toISOString();
-    setAppointments((prev) =>
-      prev.map((item) => {
-        if (item.id === id) {
-          return {
-            ...item,
-            status: 'CANCELADO',
-            adminNotes: reason ? `Cancelado: ${reason}` : item.adminNotes,
-            updatedAt: nowIso,
-            history: [
-              ...item.history,
-              {
-                status: 'CANCELADO',
-                timestamp: nowIso,
-                note: `Agendamento cancelado. Vaga liberada.${reason ? ` Motivo: ${reason}` : ''}`,
-              },
-            ],
-          };
-        }
-        return item;
-      })
-    );
-
-    // Notification
     const apt = appointments.find((a) => a.id === id);
     if (apt) {
-      setNotifications((prev) => [
-        {
-          id: `notif-${Date.now()}`,
-          title: 'Agendamento cancelado',
-          message: `O agendamento de ${apt.clientName} em ${formatDateBR(apt.date)} às ${apt.time} foi cancelado e a vaga liberada.`,
-          type: 'CANCELLATION',
-          appointmentId: id,
-          isRead: false,
-          createdAt: nowIso,
-        },
-        ...prev,
-      ]);
+      const updatedApt: Appointment = {
+        ...apt,
+        status: 'CANCELADO',
+        adminNotes: reason ? `Cancelado: ${reason}` : apt.adminNotes,
+        updatedAt: nowIso,
+        history: [
+          ...apt.history,
+          {
+            status: 'CANCELADO',
+            timestamp: nowIso,
+            note: `Agendamento cancelado. Vaga liberada.${reason ? ` Motivo: ${reason}` : ''}`,
+          },
+        ],
+      };
+      setAppointments((prev) =>
+        prev.map((item) => (item.id === id ? updatedApt : item))
+      );
+      saveAppointmentToFirebase(updatedApt).catch(console.warn);
+
+      // Notification
+      const notifItem: NotificationItem = {
+        id: `notif-${Date.now()}`,
+        title: 'Agendamento cancelado',
+        message: `O agendamento de ${apt.clientName} em ${formatDateBR(apt.date)} às ${apt.time} foi cancelado e a vaga liberada.`,
+        type: 'CANCELLATION',
+        appointmentId: id,
+        isRead: false,
+        createdAt: nowIso,
+      };
+      setNotifications((prev) => [notifItem, ...prev]);
+      saveNotificationToFirebase(notifItem).catch(console.warn);
     }
   };
 
@@ -653,40 +935,39 @@ export const SalonProvider: React.FC<{ children: React.ReactNode }> = ({
   const finalizeAppointment = (id: string) => {
     const nowIso = new Date().toISOString();
     const apt = appointments.find((a) => a.id === id);
-
-    setAppointments((prev) =>
-      prev.map((item) => {
-        if (item.id === id) {
-          return {
-            ...item,
+    if (apt) {
+      const updatedApt: Appointment = {
+        ...apt,
+        status: 'FINALIZADO',
+        updatedAt: nowIso,
+        history: [
+          ...apt.history,
+          {
             status: 'FINALIZADO',
-            updatedAt: nowIso,
-            history: [
-              ...item.history,
-              {
-                status: 'FINALIZADO',
-                timestamp: nowIso,
-                note: 'Atendimento concluído com sucesso.',
-              },
-            ],
-          };
-        }
-        return item;
-      })
-    );
-
-    if (apt?.clientId) {
-      setClients((prev) =>
-        prev.map((c) =>
-          c.id === apt.clientId
-            ? {
-                ...c,
-                completedAppointments: (c.completedAppointments || 0) + 1,
-                lastVisit: apt.date,
-              }
-            : c
-        )
+            timestamp: nowIso,
+            note: 'Atendimento concluído com sucesso.',
+          },
+        ],
+      };
+      setAppointments((prev) =>
+        prev.map((item) => (item.id === id ? updatedApt : item))
       );
+      saveAppointmentToFirebase(updatedApt).catch(console.warn);
+
+      if (apt.clientId) {
+        const clientObj = clients.find((c) => c.id === apt.clientId);
+        if (clientObj) {
+          const updatedCli: Client = {
+            ...clientObj,
+            completedAppointments: (clientObj.completedAppointments || 0) + 1,
+            lastVisit: apt.date,
+          };
+          setClients((prev) =>
+            prev.map((c) => (c.id === apt.clientId ? updatedCli : c))
+          );
+          saveClientToFirebase(updatedCli).catch(console.warn);
+        }
+      }
     }
   };
 
@@ -772,6 +1053,7 @@ export const SalonProvider: React.FC<{ children: React.ReactNode }> = ({
     };
 
     setAppointments((prev) => [newApt, ...prev]);
+    saveAppointmentToFirebase(newApt).catch(console.warn);
     return { success: true, message: 'Agendamento cadastrado com sucesso!' };
   };
 
@@ -780,8 +1062,10 @@ export const SalonProvider: React.FC<{ children: React.ReactNode }> = ({
     setWeeks((prev) =>
       prev.map((w) => {
         if (w.id === weekId) {
-          const nextStatus = w.status === 'OPEN' ? 'CLOSED' : 'OPEN';
-          return { ...w, status: nextStatus };
+          const nextStatus: WeekConfig['status'] = w.status === 'OPEN' ? 'CLOSED' : 'OPEN';
+          const updated: WeekConfig = { ...w, status: nextStatus };
+          saveWeekToFirebase(updated).catch(console.warn);
+          return updated;
         }
         return w;
       })
@@ -790,13 +1074,27 @@ export const SalonProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const openWeek = (weekId: string) => {
     setWeeks((prev) =>
-      prev.map((w) => (w.id === weekId ? { ...w, status: 'OPEN' } : w))
+      prev.map((w) => {
+        if (w.id === weekId) {
+          const updated = { ...w, status: 'OPEN' as const };
+          saveWeekToFirebase(updated).catch(console.warn);
+          return updated;
+        }
+        return w;
+      })
     );
   };
 
   const closeWeek = (weekId: string) => {
     setWeeks((prev) =>
-      prev.map((w) => (w.id === weekId ? { ...w, status: 'CLOSED' } : w))
+      prev.map((w) => {
+        if (w.id === weekId) {
+          const updated = { ...w, status: 'CLOSED' as const };
+          saveWeekToFirebase(updated).catch(console.warn);
+          return updated;
+        }
+        return w;
+      })
     );
   };
 
@@ -806,9 +1104,14 @@ export const SalonProvider: React.FC<{ children: React.ReactNode }> = ({
     updates: Partial<DayAvailabilityConfig>
   ) => {
     setAvailability((prev) =>
-      prev.map((item) =>
-        item.dayOfWeek === dayOfWeek ? { ...item, ...updates } : item
-      )
+      prev.map((item) => {
+        if (item.dayOfWeek === dayOfWeek) {
+          const updated = { ...item, ...updates };
+          saveAvailabilityToFirebase(updated).catch(console.warn);
+          return updated;
+        }
+        return item;
+      })
     );
   };
 
@@ -822,7 +1125,9 @@ export const SalonProvider: React.FC<{ children: React.ReactNode }> = ({
         if (item.dayOfWeek === dayOfWeek) {
           const custom = { ...(item.customSlotCapacities || {}) };
           custom[time] = capacity;
-          return { ...item, customSlotCapacities: custom };
+          const updated = { ...item, customSlotCapacities: custom };
+          saveAvailabilityToFirebase(updated).catch(console.warn);
+          return updated;
         }
         return item;
       })
@@ -845,10 +1150,12 @@ export const SalonProvider: React.FC<{ children: React.ReactNode }> = ({
       createdAt: new Date().toISOString(),
     };
     setBlockedSlots((prev) => [newBlock, ...prev]);
+    saveBlockedSlotToFirebase(newBlock).catch(console.warn);
   };
 
   const removeBlockedSlot = (id: string) => {
     setBlockedSlots((prev) => prev.filter((b) => b.id !== id));
+    deleteBlockedSlotFromFirebase(id).catch(console.warn);
   };
 
   // 11. Services CRUD
@@ -858,40 +1165,76 @@ export const SalonProvider: React.FC<{ children: React.ReactNode }> = ({
       ...serviceData,
     };
     setServices((prev) => [...prev, newService]);
+    saveServiceToFirebase(newService).catch(console.warn);
   };
 
   const updateService = (id: string, updates: Partial<Service>) => {
     setServices((prev) =>
-      prev.map((s) => (s.id === id ? { ...s, ...updates } : s))
+      prev.map((s) => {
+        if (s.id === id) {
+          const updated = { ...s, ...updates };
+          saveServiceToFirebase(updated).catch(console.warn);
+          return updated;
+        }
+        return s;
+      })
     );
   };
 
   const deleteService = (id: string) => {
     setServices((prev) => prev.filter((s) => s.id !== id));
+    deleteServiceFromFirebase(id).catch(console.warn);
   };
 
   const toggleServiceActive = (id: string) => {
     setServices((prev) =>
-      prev.map((s) => (s.id === id ? { ...s, active: !s.active } : s))
+      prev.map((s) => {
+        if (s.id === id) {
+          const updated = { ...s, active: !s.active };
+          saveServiceToFirebase(updated).catch(console.warn);
+          return updated;
+        }
+        return s;
+      })
     );
   };
 
   // 12. Client Notes
   const updateClientNotes = (id: string, notes: string) => {
     setClients((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, notes } : c))
+      prev.map((c) => {
+        if (c.id === id) {
+          const updated = { ...c, notes };
+          saveClientToFirebase(updated).catch(console.warn);
+          return updated;
+        }
+        return c;
+      })
     );
   };
 
   // 13. Notifications
   const markNotificationRead = (id: string) => {
     setNotifications((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, isRead: true } : n))
+      prev.map((n) => {
+        if (n.id === id) {
+          const updated = { ...n, isRead: true };
+          saveNotificationToFirebase(updated).catch(console.warn);
+          return updated;
+        }
+        return n;
+      })
     );
   };
 
   const markAllNotificationsRead = () => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+    setNotifications((prev) =>
+      prev.map((n) => {
+        const updated = { ...n, isRead: true };
+        saveNotificationToFirebase(updated).catch(console.warn);
+        return updated;
+      })
+    );
   };
 
   const unreadNotificationsCount = notifications.filter((n) => !n.isRead).length;
@@ -906,7 +1249,11 @@ export const SalonProvider: React.FC<{ children: React.ReactNode }> = ({
     if (sanitized.whatsapp) {
       sanitized.whatsapp = normalizeWhatsAppNumber(sanitized.whatsapp);
     }
-    setSettings((prev) => ({ ...prev, ...sanitized }));
+    setSettings((prev) => {
+      const merged = { ...prev, ...sanitized };
+      saveSettingsToFirebase(merged).catch(console.warn);
+      return merged;
+    });
   };
 
   // Admin Authentication Actions
@@ -1243,6 +1590,10 @@ export const SalonProvider: React.FC<{ children: React.ReactNode }> = ({
 
         updateSettings,
         resetToSampleData,
+
+        firebaseStatus,
+        syncWithFirebase,
+        bootstrapFirebase,
       }}
     >
       {children}

@@ -22,6 +22,7 @@ import {
   Service,
   WeekConfig,
 } from '../types';
+import { compressBase64Image } from '../utils/imageCompressor';
 import {
   INITIAL_APPOINTMENTS,
   INITIAL_AVAILABILITY,
@@ -125,11 +126,57 @@ export async function bootstrapFirestoreCollections(): Promise<{
 // FIRESTORE CRUD OPERATIONS
 // ----------------------------------------------------
 
+/**
+ * Ensures any base64 image inside settings is strictly compressed and safely within
+ * the 1 MiB limit of Firestore documents.
+ */
+export async function sanitizeSettingsForFirestore(
+  settings: SalonSettings
+): Promise<SalonSettings> {
+  const sanitized: SalonSettings = { ...settings };
+
+  try {
+    if (sanitized.logoUrl && sanitized.logoUrl.startsWith('data:image')) {
+      sanitized.logoUrl = await compressBase64Image(sanitized.logoUrl, {
+        maxWidth: 400,
+        maxHeight: 400,
+        quality: 0.8,
+        maxSizeBytes: 100 * 1024,
+      });
+    }
+
+    if (sanitized.ownerCoverUrl && sanitized.ownerCoverUrl.startsWith('data:image')) {
+      sanitized.ownerCoverUrl = await compressBase64Image(sanitized.ownerCoverUrl, {
+        maxWidth: 800,
+        maxHeight: 800,
+        quality: 0.75,
+        maxSizeBytes: 150 * 1024,
+      });
+    }
+
+    // Secondary emergency safety check: if JSON stringify exceeds 850 KB, fallback images to prevent Firestore rejection
+    const estimatedSize = JSON.stringify(sanitized).length;
+    if (estimatedSize > 850 * 1024) {
+      if (sanitized.ownerCoverUrl?.startsWith('data:image')) {
+        sanitized.ownerCoverUrl = INITIAL_SETTINGS.ownerCoverUrl;
+      }
+      if (sanitized.logoUrl?.startsWith('data:image')) {
+        sanitized.logoUrl = INITIAL_SETTINGS.logoUrl;
+      }
+    }
+  } catch (err) {
+    console.warn('[Firebase] Falha na compressão preventiva de configurações:', err);
+  }
+
+  return sanitized;
+}
+
 // Settings
 export async function saveSettingsToFirebase(settings: SalonSettings): Promise<void> {
   try {
+    const payload = await sanitizeSettingsForFirestore(settings);
     const ref = doc(db, COLLECTIONS.SETTINGS, 'default');
-    await setDoc(ref, settings, { merge: true });
+    await setDoc(ref, payload, { merge: true });
   } catch (error) {
     console.warn('[Firebase] Erro ao salvar configurações:', error);
   }
@@ -251,8 +298,141 @@ export async function saveNotificationToFirebase(
 }
 
 // ----------------------------------------------------
-// REAL-TIME LISTENERS
+// SYNC LOCAL STATE TO FIREBASE & CONNECTION CHECK
 // ----------------------------------------------------
+export async function syncAllStateToFirebase(state: {
+  services: Service[];
+  availability: DayAvailabilityConfig[];
+  weeks: WeekConfig[];
+  appointments: Appointment[];
+  blockedSlots: BlockedSlot[];
+  clients: Client[];
+  notifications: NotificationItem[];
+  settings: SalonSettings;
+}): Promise<{ success: boolean; message: string }> {
+  try {
+    const batch = writeBatch(db);
+
+    // Settings (sanitized and compressed)
+    const sanitizedSettings = await sanitizeSettingsForFirestore(state.settings);
+    const settingsRef = doc(db, COLLECTIONS.SETTINGS, 'default');
+    batch.set(settingsRef, sanitizedSettings, { merge: true });
+
+    // Services
+    for (const service of state.services) {
+      const sRef = doc(db, COLLECTIONS.SERVICES, service.id);
+      batch.set(sRef, service, { merge: true });
+    }
+
+    // Availability
+    for (const avail of state.availability) {
+      const aRef = doc(db, COLLECTIONS.AVAILABILITY, `day-${avail.dayOfWeek}`);
+      batch.set(aRef, avail, { merge: true });
+    }
+
+    // Weeks
+    for (const week of state.weeks) {
+      const wRef = doc(db, COLLECTIONS.WEEKS, week.id);
+      batch.set(wRef, week, { merge: true });
+    }
+
+    // Blocked Slots
+    for (const block of state.blockedSlots) {
+      const bRef = doc(db, COLLECTIONS.BLOCKED_SLOTS, block.id);
+      batch.set(bRef, block, { merge: true });
+    }
+
+    // Clients
+    for (const client of state.clients) {
+      const cRef = doc(db, COLLECTIONS.CLIENTS, client.id);
+      batch.set(cRef, client, { merge: true });
+    }
+
+    // Appointments
+    for (const apt of state.appointments) {
+      const aptRef = doc(db, COLLECTIONS.APPOINTMENTS, apt.id);
+      batch.set(aptRef, apt, { merge: true });
+    }
+
+    // Notifications
+    for (const notif of state.notifications) {
+      const nRef = doc(db, COLLECTIONS.NOTIFICATIONS, notif.id);
+      batch.set(nRef, notif, { merge: true });
+    }
+
+    await batch.commit();
+    return {
+      success: true,
+      message: 'Todas as coleções e dados foram sincronizados com o Firebase Firestore!',
+    };
+  } catch (error: unknown) {
+    const err = error instanceof Error ? error.message : 'Falha na sincronização';
+    return {
+      success: false,
+      message: `Erro ao sincronizar com Firebase: ${err}`,
+    };
+  }
+}
+
+export async function checkFirebaseHealth(): Promise<{
+  connected: boolean;
+  counts: FirebaseSyncStatus['collectionsCount'];
+  error: string | null;
+}> {
+  try {
+    const [
+      servicesSnap,
+      appointmentsSnap,
+      clientsSnap,
+      availabilitySnap,
+      blockedSnap,
+      weeksSnap,
+      notificationsSnap,
+      settingsSnap,
+    ] = await Promise.all([
+      getDocs(collection(db, COLLECTIONS.SERVICES)),
+      getDocs(collection(db, COLLECTIONS.APPOINTMENTS)),
+      getDocs(collection(db, COLLECTIONS.CLIENTS)),
+      getDocs(collection(db, COLLECTIONS.AVAILABILITY)),
+      getDocs(collection(db, COLLECTIONS.BLOCKED_SLOTS)),
+      getDocs(collection(db, COLLECTIONS.WEEKS)),
+      getDocs(collection(db, COLLECTIONS.NOTIFICATIONS)),
+      getDocs(collection(db, COLLECTIONS.SETTINGS)),
+    ]);
+
+    return {
+      connected: true,
+      counts: {
+        services: servicesSnap.size,
+        appointments: appointmentsSnap.size,
+        clients: clientsSnap.size,
+        availability: availabilitySnap.size,
+        blockedSlots: blockedSnap.size,
+        weeks: weeksSnap.size,
+        notifications: notificationsSnap.size,
+        settings: settingsSnap.size,
+      },
+      error: null,
+    };
+  } catch (error: unknown) {
+    const err = error instanceof Error ? error.message : 'Erro ao conectar com Firestore';
+    return {
+      connected: false,
+      counts: {
+        services: 0,
+        appointments: 0,
+        clients: 0,
+        availability: 0,
+        blockedSlots: 0,
+        weeks: 0,
+        notifications: 0,
+        settings: 0,
+      },
+      error: err,
+    };
+  }
+}
+
 export function subscribeToFirestoreCollection<T>(
   collectionName: string,
   onData: (data: T[]) => void,
