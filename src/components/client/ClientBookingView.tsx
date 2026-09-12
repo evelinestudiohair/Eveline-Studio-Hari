@@ -174,7 +174,7 @@ export const ClientBookingView: React.FC = () => {
               src={settings.ownerCoverUrl}
               alt={`${settings.ownerName} - ${settings.name}`}
               referrerPolicy="no-referrer"
-              className="w-full h-full object-cover object-center transform hover:scale-105 transition-transform duration-700"
+              className="w-full h-full object-cover object-[80%_center] sm:object-center transform hover:scale-105 transition-transform duration-700"
             />
           ) : (
             <div className="w-full h-full bg-gradient-to-r from-[#16161B] via-[#22222D] to-[#16161B] flex items-center justify-center">
@@ -186,9 +186,9 @@ export const ClientBookingView: React.FC = () => {
           <div className="absolute inset-0 bg-gradient-to-t from-[#16161B] via-[#16161B]/50 to-transparent" />
           <div className="absolute inset-0 bg-gradient-to-r from-[#0D0D10]/80 via-transparent to-[#0D0D10]/80" />
 
-          {/* Top subtle badge on cover */}
-          <div className="absolute top-3.5 right-3.5 sm:top-4 sm:right-4 z-10">
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#0D0D10]/80 backdrop-blur-md border border-[#C5A059]/40 text-[#E6CA85] text-[10px] font-bold uppercase tracking-wider shadow-lg">
+          {/* Top subtle badge on cover - strategically placed on the top-left where the background is dark, avoiding the face on the right */}
+          <div className="absolute top-3.5 left-3.5 sm:top-4 sm:left-4 z-10">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#0D0D10]/85 backdrop-blur-md border border-[#C5A059]/40 text-[#E6CA85] text-[10px] sm:text-xs font-bold uppercase tracking-wider shadow-lg">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
               Atendimento Exclusivo
             </span>
@@ -238,8 +238,12 @@ export const ClientBookingView: React.FC = () => {
 
           {/* Trust badges pills */}
           <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-3 mt-4 text-[11px] text-[#D8D4CE]">
-            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[#1F1F28] border border-[#2A2A38]">
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[#1F1F28] border border-[#C5A059]/30 text-[#E6CA85]">
               <Sparkles className="w-3 h-3 text-[#C5A059]" />
+              Atendimento Exclusivo
+            </span>
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[#1F1F28] border border-[#2A2A38]">
+              <Clock className="w-3 h-3 text-[#C5A059]" />
               Hora Marcada
             </span>
             <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[#1F1F28] border border-[#2A2A38]">
